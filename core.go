@@ -182,9 +182,11 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 		logDebug(opts, "not enough comments: %s", opts.OriginalURL)
 	}
 
-	lenText = utf8.RuneCountInString(tmpBodyText)
-	if lenText < opts.Config.MinOutputSize && lenComments < opts.Config.MinOutputCommentSize {
-		return nil, fmt.Errorf("text and comments are not long enough: %d %d", lenText, lenComments)
+	if !opts.IncludeLinksOnly {
+		lenText = utf8.RuneCountInString(tmpBodyText)
+		if lenText < opts.Config.MinOutputSize && lenComments < opts.Config.MinOutputCommentSize {
+			return nil, fmt.Errorf("text and comments are not long enough: %d %d", lenText, lenComments)
+		}
 	}
 
 	// Check duplicates at body level
