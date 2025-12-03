@@ -143,7 +143,7 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 	var lenComments int
 	var commentsBody *html.Node
 
-	if !opts.ExcludeComments { // Comment is included
+	if !opts.ExcludeComments && !opts.IncludeLinksOnly { // Comment is included
 		commentsBody, tmpComments = extractComments(doc, cache, opts)
 		lenComments = utf8.RuneCountInString(tmpComments)
 	} else if opts.Focus == FavorPrecision {
@@ -158,7 +158,7 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 		postBody, tmpBodyText = compareExternalExtraction(docBackup1, postBody, opts)
 	}
 
-	// Rescue: try to use original/dirty tree
+	// Rescue: try to use original/dirty tree -- only != FavorPrecision
 	lenText := utf8.RuneCountInString(tmpBodyText)
 	if lenText < opts.Config.MinExtractedSize && opts.Focus != FavorPrecision {
 		postBody, tmpBodyText = baseline(docBackup2)

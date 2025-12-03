@@ -35,6 +35,42 @@ import (
 // docCleaning cleans the document by discarding unwanted elements.
 // In original it's named `tree_cleaning`.
 func docCleaning(doc *html.Node, opts Options) {
+	// If only links should be included, remove all nodes except <a> recursively
+	if opts.IncludeLinksOnly {
+		var keepOnlyLinks func(node *html.Node)
+		keepOnlyLinks = func(node *html.Node) {
+			for child := node.FirstChild; child != nil; {
+				next := child.NextSibling
+				if child.Type == html.ElementNode && dom.TagName(child) != "a" {
+					// Check if this non-`a` element contains any `a` descendants
+					hasALink := false
+					var checkForALink func(n *html.Node)
+					checkForALink = func(n *html.Node) {
+						if n.Type == html.ElementNode && dom.TagName(n) == "a" {
+							hasALink = true
+							return
+						}
+						for c := n.FirstChild; c != nil && !hasALink; c = c.NextSibling {
+							checkForALink(c)
+						}
+					}
+					checkForALink(child)
+					if hasALink {
+						// Recursively process children to keep only links
+						keepOnlyLinks(child)
+					} else {
+						node.RemoveChild(child)
+					}
+				} else {
+					keepOnlyLinks(child)
+				}
+				child = next
+			}
+		}
+		keepOnlyLinks(doc)
+		return
+	}
+
 	// Determine cleaning strategy
 	cleaningList := maps.Clone(tagsToClean)
 	strippingList := maps.Clone(tagsToStrip)
@@ -60,7 +96,7 @@ func docCleaning(doc *html.Node, opts Options) {
 		}
 	}
 
-	if opts.IncludeImages {
+	if opts.IncludeImages && !opts.IncludeLinksOnly {
 		// Many websites have <img> inside <figure> or <picture> or <source> tag
 		delete(cleaningList, "figure")
 		delete(cleaningList, "picture")
@@ -484,7 +520,7 @@ func deleteByLinkDensity(subTree *html.Node, opts Options, backtracking bool, ta
 // to be HTML, we won't do it here.
 func convertTags(tree *html.Node, opts Options) {
 	// Delete links for faster processing
-	if !opts.IncludeLinks {
+	if !opts.IncludeLinks && !opts.IncludeLinksOnly {
 		// Prepare selector
 		cssSelector := "div a, ul a, ol a, dl a, p a"
 		if !opts.ExcludeTables {

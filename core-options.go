@@ -109,6 +109,10 @@ type Options struct {
 	// targets (experimental).
 	IncludeLinks bool
 
+	// IncludeLinksOnly specify whether the extraction result will include only links along with their
+	// targets (experimental) and no other content
+	IncludeLinksOnly bool
+
 	// BlacklistedAuthors is list of author names to be excluded from extraction result.
 	BlacklistedAuthors []string
 

@@ -57,3 +57,40 @@ func Test_processNode(t *testing.T) {
 	assert.Equal(t, "some text", etree.Text(node))
 	assert.Equal(t, "tail", etree.Tail(node))
 }
+
+func Test_docCleaning_IncludeLinksOnly_ContainerPreservation(t *testing.T) {
+	htmlStr := `<div><ul><li><a href="/foo">foo</a></li><li><span><a href="/bar">bar</a></span></li><li><span>no link</span></li></ul><div><span><a href="/baz">baz</a></span></div><div><span>no link here</span></div></div>`
+	doc := etree.FromString(htmlStr)
+	opts := defaultOpts
+	opts.IncludeLinksOnly = true
+
+	docCleaning(doc, opts)
+
+	// Only containers with <a> descendants should remain
+	// There should be no <span> or <li> left that do not contain <a>
+	remainingLinks := dom.GetElementsByTagName(doc, "a")
+	assert.Equal(t, 3, len(remainingLinks))
+	assert.Equal(t, "foo", dom.TextContent(remainingLinks[0]))
+	assert.Equal(t, "bar", dom.TextContent(remainingLinks[1]))
+	assert.Equal(t, "baz", dom.TextContent(remainingLinks[2]))
+
+	// Check that the parent containers of each link are preserved
+	fooParent := remainingLinks[0].Parent
+	barParent := remainingLinks[1].Parent
+	bazParent := remainingLinks[2].Parent
+	assert.NotNil(t, fooParent)
+	assert.NotNil(t, barParent)
+	assert.NotNil(t, bazParent)
+	// The <li> and <span> for foo and bar, <span> for baz
+	assert.Contains(t, []string{"li", "span"}, dom.TagName(fooParent))
+	assert.Contains(t, []string{"span", "li"}, dom.TagName(barParent))
+	assert.Equal(t, "span", dom.TagName(bazParent))
+
+	// Ensure containers without links are removed
+	noLinkSpans := dom.QuerySelectorAll(doc, "span:not(:has(a))")
+	assert.Equal(t, 0, len(noLinkSpans))
+	noLinkLis := dom.QuerySelectorAll(doc, "li:not(:has(a))")
+	assert.Equal(t, 0, len(noLinkLis))
+	noLinkDivs := dom.QuerySelectorAll(doc, "div:not(:has(a))")
+	assert.Equal(t, 0, len(noLinkDivs))
+}
