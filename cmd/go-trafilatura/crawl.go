@@ -145,46 +145,84 @@ func (c *crawler) extractURLs(source string) ([]string, error) {
 	}
 
 	for len(queue) > 0 && (maxURLs == 0 || len(result) < maxURLs) {
-		item := queue[0]
-		queue = queue[1:]
-
-		if visited[item.url] || (maxDepth > 0 && item.depth > maxDepth) {
-			continue
+		// Group all items at the current depth
+		currentDepth := queue[0].depth
+		var currentLevel []struct {
+			url   string
+			depth int
 		}
-		visited[item.url] = true
-		result = append(result, item.url)
-
-		children, err := extractLinksFromURL(c.httpClient, c.userAgent, item.url, c.extractOptions)
-		if err != nil {
-			log.Warn().Msgf("failed to extract links: %v", err)
-			continue
+		for len(queue) > 0 && queue[0].depth == currentDepth {
+			currentLevel = append(currentLevel, queue[0])
+			queue = queue[1:]
 		}
 
-		// Add delay between requests
-		if c.delay > 0 {
-			time.Sleep(c.delay)
-		}
+		// Channel to collect children from all goroutines
+		childrenCh := make(chan []string, len(currentLevel))
 
-		for _, child := range children {
-			if visited[child] {
+		// Process all URLs at this depth in parallel
+		for _, item := range currentLevel {
+			if visited[item.url] || (maxDepth > 0 && item.depth > maxDepth) {
 				continue
 			}
-			childURL, err := nurl.Parse(child)
-			if err != nil {
+			visited[item.url] = true
+			result = append(result, item.url)
+
+			// Acquire semaphore for parallelism
+			if err := c.semaphore.Acquire(nil, 1); err != nil {
+				childrenCh <- nil
 				continue
 			}
-			childTLD, err := publicsuffix.EffectiveTLDPlusOne(childURL.Hostname())
-			if err != nil {
-				continue
-			}
-			if childTLD != sourceTLD {
-				log.Info().Msgf("Skipping URL %s because it's a different TLD", child)
-				continue
-			}
-			queue = append(queue, struct {
+
+			go func(item struct {
 				url   string
 				depth int
-			}{child, item.depth + 1})
+			}) {
+				defer c.semaphore.Release(1)
+				children, err := extractLinksFromURL(c.httpClient, c.userAgent, item.url, c.extractOptions)
+				if err != nil {
+					log.Warn().Msgf("failed to extract links: %v", err)
+					childrenCh <- nil
+					return
+				}
+				if c.delay > 0 {
+					time.Sleep(c.delay)
+				}
+				childrenCh <- children
+			}(item)
+		}
+
+		// Collect all children from this depth
+		var allChildren []string
+		for i := 0; i < len(currentLevel); i++ {
+			children := <-childrenCh
+			for _, child := range children {
+				if visited[child] {
+					continue
+				}
+				childURL, err := nurl.Parse(child)
+				if err != nil {
+					continue
+				}
+				childTLD, err := publicsuffix.EffectiveTLDPlusOne(childURL.Hostname())
+				if err != nil {
+					continue
+				}
+				if childTLD != sourceTLD {
+					log.Info().Msgf("Skipping URL %s because it's a different TLD", child)
+					continue
+				}
+				allChildren = append(allChildren, child)
+			}
+		}
+
+		// Enqueue deduplicated children for next depth
+		for _, child := range allChildren {
+			if !visited[child] {
+				queue = append(queue, struct {
+					url   string
+					depth int
+				}{child, currentDepth + 1})
+			}
 		}
 	}
 
