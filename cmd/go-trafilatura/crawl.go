@@ -47,9 +47,9 @@ func crawlCmd() *cobra.Command {
 	flags.Int("parallel", 10, "number of concurrent download at a time (default 10)")
 	flags.Duration("delay", time.Millisecond*250, "delay between each url download (default 250ms)")
 
-	flags.Int("max_urls", 0, "maximum number of URLs to download (default 0)")
-	flags.Int("max_depth", 2, "maximum recursion depth (default 2)")
-	flags.Bool("same_domain", true, "restrict recursion to same domain")
+	flags.Int("max-urls", 0, "maximum number of URLs to download (default 0)")
+	flags.Int("max-depth", 2, "maximum recursion depth (default 2)")
+	flags.Bool("no-same-domain", false, "restrict recursion to same domain")
 
 	return cmd
 }
@@ -59,12 +59,12 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 	flags := cmd.Flags()
 	delay, _ := flags.GetDuration("delay")
 	nThread, _ := flags.GetInt("parallel")
-	nURL, _ := flags.GetInt("max_urls")
-	nDepth, _ := flags.GetInt("max_depth")
+	nURL, _ := flags.GetInt("max-urls")
+	nDepth, _ := flags.GetInt("max-depth")
 	userAgent, _ := cmd.Flags().GetString("user-agent")
-	sameDomain, _ := flags.GetBool("same_domain")
+	notSameDomain, _ := flags.GetBool("no-same-domain")
 
-	log.Info().Int("nURL", nURL).Int("nDepth", nDepth).Int("nThread", nThread).Msgf("Crawling URL")
+	log.Info().Int("nURL", nURL).Int("nDepth", nDepth).Int("nThread", nThread).Bool("notSameDomain", notSameDomain).Msgf("Crawling URL")
 
 	opts := createExtractorOptions(cmd)
 	opts.IncludeLinksOnly = true
@@ -78,7 +78,7 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 		semaphore:      semaphore.NewWeighted(int64(nThread)),
 		delay:          delay,
 		cancelOnError:  false,
-		sameDomain:     sameDomain,
+		sameDomain:     !notSameDomain,
 		maxURLs:        nURL,
 		maxDepth:       nDepth,
 	}).extractURLs(context.Background(), args[0])
@@ -132,11 +132,7 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 		depth int
 	}{{source, 0}}
 
-	sourceURL, err := nurl.Parse(source)
-	if err != nil {
-		return nil, err
-	}
-	sourceTLD, err := publicsuffix.EffectiveTLDPlusOne(sourceURL.Hostname())
+	sourceTLD, err := getTopLevelDomain(source)
 	if err != nil {
 		return nil, err
 	}
@@ -198,17 +194,15 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 				if visited[child] {
 					continue
 				}
-				childURL, err := nurl.Parse(child)
-				if err != nil {
-					continue
-				}
-				childTLD, err := publicsuffix.EffectiveTLDPlusOne(childURL.Hostname())
-				if err != nil {
-					continue
-				}
-				if childTLD != sourceTLD {
-					log.Debug().Msgf("Skipping URL %s because it's a different TLD", child)
-					continue
+				if c.sameDomain {
+					childTLD, err := getTopLevelDomain(child)
+					if err != nil {
+						continue
+					}
+					if childTLD != sourceTLD {
+						log.Debug().Msgf("Skipping URL %s because it's a different TLD", child)
+						continue
+					}
 				}
 				allChildren = append(allChildren, child)
 			}
@@ -226,4 +220,16 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 	}
 
 	return result, nil
+}
+
+func getTopLevelDomain(domain string) (string, error) {
+	domainURL, err := nurl.Parse(domain)
+	if err != nil {
+		return "", err
+	}
+	topLevelDomain, err := publicsuffix.EffectiveTLDPlusOne(domainURL.Hostname())
+	if err != nil {
+		return "", err
+	}
+	return topLevelDomain, nil
 }
