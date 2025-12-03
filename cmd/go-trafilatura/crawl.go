@@ -20,12 +20,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	nurl "net/url"
 	"time"
 
+	"github.com/go-shiori/dom"
 	"github.com/markusmobius/go-trafilatura"
 	"github.com/spf13/cobra"
+	"golang.org/x/net/publicsuffix"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
@@ -46,6 +49,7 @@ func crawlCmd() *cobra.Command {
 
 	flags.Int("max_urls", 0, "maximum number of URLs to download (default 0)")
 	flags.Int("max_depth", 0, "maximum recursion depth (default 0)")
+	flags.Bool("same_domain", true, "restrict recursion to same domain")
 
 	return cmd
 }
@@ -58,6 +62,7 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 	nURL, _ := flags.GetInt("max_urls")
 	nDepth, _ := flags.GetInt("max_depth")
 	userAgent, _ := cmd.Flags().GetString("user-agent")
+	sameDomain, _ := flags.GetBool("same_domain")
 
 	log.Info().Int("nURL", nURL).Int("nDepth", nDepth).Int("nThread", nThread).Msgf("Crawling URL")
 
@@ -69,10 +74,11 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 	err := (&crawler{
 		userAgent:      userAgent,
 		httpClient:     createHttpClient(cmd),
-		extractOptions: createExtractorOptions(cmd),
+		extractOptions: opts,
 		semaphore:      semaphore.NewWeighted(int64(nThread)),
 		delay:          time.Duration(delay) * time.Second,
 		cancelOnError:  false,
+		sameDomain:     sameDomain,
 	}).extractURLs(context.Background(), args[0])
 
 	if err != nil {
@@ -87,28 +93,58 @@ type crawler struct {
 	userAgent      string
 	delay          time.Duration
 	cancelOnError  bool
+	sameDomain     bool
+	urls           []string
 }
 
-// extractURLs based on batchDownloader
-func (c *crawler) extractURLs(ctx context.Context, source string) error {
+func extractLinksFromURL(httpClient *http.Client, userAgent string, source string, opts trafilatura.Options) ([]string, error) {
+	if !isValidURL(source) {
+		return nil, fmt.Errorf("invalid URL: %s", source)
+	}
+	parsedURL, err := nurl.ParseRequestURI(source)
+	if err != nil {
+		return nil, err
+	}
+	result, err := processURL(httpClient, userAgent, parsedURL, opts)
+	if err != nil {
+		return nil, err
+	}
+	log.Info().Str("url", source).Int("size", len(result.ContentText)).Msgf("Found URL")
+	links := dom.QuerySelectorAll(result.ContentNode, "a[href]")
+	urls := make([]string, 0, len(links))
+	for _, link := range links {
+		href := dom.GetAttribute(link, "href")
+		if href != "" {
+			urls = append(urls, href)
+		}
+	}
+	return urls, nil
+}
+
+func (c *crawler) extractURLs(ctx context.Context, source string) ([]string, error) {
 	g, ctx := errgroup.WithContext(context.Background())
 
-	var err error
-	var result *trafilatura.ExtractResult
-
-	if isValidURL(source) {
-		parsedURL, _ := nurl.ParseRequestURI(source)
-		result, err = processURL(c.httpClient, c.userAgent, parsedURL, c.extractOptions)
-		if err != nil {
-			return err
-		}
-		log.Info().Str("url", source).Int("size", len(result.ContentText)).Msgf("Found URL")
+	children, err := extractLinksFromURL(c.httpClient, c.userAgent, source, c.extractOptions)
+	if err != nil {
+		log.Error().Msgf("failed to extract links: %v", err)
 	}
-	urls := make([]string, 0)
-	urls = append(urls, source)
+	// process urls
+	log.Info().Str("url", source).Int("size", len(urls)).Msgf("Found URLs")
 
-	for _, url := range urls {
-		parsedURL, _ := nurl.ParseRequestURI(source)
+	// recursively extract URLS from the same tldr only
+	for _, url := range children {
+		// Only allow following same domain
+		if c.sameDomain {
+			sourceURL, _ := nurl.Parse(source)
+			urlToCheck, _ := nurl.Parse(url)
+			sourceTLD, _ := publicsuffix.EffectiveTLDPlusOne(sourceURL.Hostname())
+			urlTLD, _ := publicsuffix.EffectiveTLDPlusOne(urlToCheck.Hostname())
+
+			if sourceTLD != urlTLD {
+				log.Info().Msgf("Skipping URL %s because it's a different TLD", url)
+				continue
+			}
+		}
 
 		g.Go(func() error {
 			// Acquire semaphore to limit concurrent download
@@ -116,15 +152,13 @@ func (c *crawler) extractURLs(ctx context.Context, source string) error {
 			if err != nil {
 				return nil
 			}
+			next_children, err := extractLinksFromURL(c.httpClient, c.userAgent, source, c.extractOptions)
 
-			// Process URL
-			result, err := processURL(c.httpClient, c.userAgent, parsedURL, c.extractOptions)
 			c.semaphore.Release(1)
 			if err != nil {
 				if c.cancelOnError {
 					return err
 				}
-
 				log.Warn().Msgf("failed to process %s: %v", url, err)
 				return nil
 			}
