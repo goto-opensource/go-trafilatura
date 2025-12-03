@@ -36,7 +36,9 @@ func crawlCmd() *cobra.Command {
 		Use:   "crawl [flags] [source]",
 		Short: "crawl a fixed number of pages within a website starting from the given URL",
 		Long: "Crawl a fixed number of pages within a website starting from the given URL.\n" +
-			"TODO: complete desct",
+			"Recursively follows links up to a specified depth, downloading pages in parallel.\n" +
+			"Options allow you to set the maximum number of URLs, recursion depth, delay between requests, and restrict crawling to the same domain.\n" +
+			"Useful for collecting URLs or content from a site for further processing.",
 		Args: cobra.ExactArgs(1),
 		Run:  crawlCmdHandler,
 	}
