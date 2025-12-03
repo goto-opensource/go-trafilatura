@@ -43,7 +43,7 @@ func crawlCmd() *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.Int("parallel", 10, "number of concurrent download at a time (default 10)")
-	flags.Int("delay", 0, "delay between each url download in seconds (default 0)")
+	flags.Duration("delay", time.Millisecond*250, "delay between each url download (default 250ms)")
 
 	flags.Int("max_urls", 0, "maximum number of URLs to download (default 0)")
 	flags.Int("max_depth", 2, "maximum recursion depth (default 2)")
@@ -55,7 +55,7 @@ func crawlCmd() *cobra.Command {
 func crawlCmdHandler(cmd *cobra.Command, args []string) {
 	// Parse arguments
 	flags := cmd.Flags()
-	delay, _ := flags.GetInt("delay")
+	delay, _ := flags.GetDuration("delay")
 	nThread, _ := flags.GetInt("parallel")
 	nURL, _ := flags.GetInt("max_urls")
 	nDepth, _ := flags.GetInt("max_depth")
@@ -74,7 +74,7 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 		httpClient:     createHttpClient(cmd),
 		extractOptions: opts,
 		semaphore:      semaphore.NewWeighted(int64(nThread)),
-		delay:          time.Duration(delay) * time.Second,
+		delay:          delay,
 		cancelOnError:  false,
 		sameDomain:     sameDomain,
 		maxURLs:        nURL,
@@ -158,6 +158,11 @@ func (c *crawler) extractURLs(source string) ([]string, error) {
 		if err != nil {
 			log.Warn().Msgf("failed to extract links: %v", err)
 			continue
+		}
+
+		// Add delay between requests
+		if c.delay > 0 {
+			time.Sleep(c.delay)
 		}
 
 		for _, child := range children {
