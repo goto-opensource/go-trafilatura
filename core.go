@@ -65,6 +65,9 @@ type ExtractResult struct {
 	// Metadata is the extracted metadata which taken from several sources i.e.
 	// <meta> tags, JSON+LD and OpenGraph scheme.
 	Metadata Metadata
+
+	// URLs are the extracted hyperlinks from the document ( <a href> elements )
+	URLs []string
 }
 
 // Extract parses a reader and find the main readable content.
@@ -154,7 +157,7 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 	postBody, tmpBodyText := extractContent(doc, cache, opts)
 
 	// Use fallback if necessary
-	if opts.EnableFallback {
+	if opts.EnableFallback && !opts.IncludeLinksOnly {
 		postBody, tmpBodyText = compareExternalExtraction(docBackup1, postBody, opts)
 	}
 
@@ -162,6 +165,23 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 	lenText := utf8.RuneCountInString(tmpBodyText)
 	if lenText < opts.Config.MinExtractedSize && opts.Focus != FavorPrecision {
 		postBody, tmpBodyText = baseline(docBackup2)
+	}
+
+	// Include links
+	urls := make([]string, 0)
+	if opts.IncludeLinks || opts.IncludeLinksOnly {
+		links := dom.QuerySelectorAll(postBody, "a[href]")
+		for _, link := range links {
+			href := dom.GetAttribute(link, "href")
+			if href != "" {
+				parsed, err := nurl.Parse(href)
+				if err == nil {
+					parsed.Fragment = ""
+					href = parsed.String()
+				}
+				urls = append(urls, href)
+			}
+		}
 	}
 
 	// Tree size sanity check
@@ -217,5 +237,6 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 		CommentsNode: commentsBody,
 		CommentsText: tmpComments,
 		Metadata:     metadata,
+		URLs:         urls,
 	}, nil
 }

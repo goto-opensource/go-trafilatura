@@ -25,7 +25,6 @@ import (
 	nurl "net/url"
 	"time"
 
-	"github.com/go-shiori/dom"
 	"github.com/markusmobius/go-trafilatura"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/publicsuffix"
@@ -86,6 +85,9 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 		log.Fatal().Msgf("process failed: %v", err)
 	}
 	log.Info().Msgf("Crawled %d URLs", len(urls))
+	for _, url := range urls {
+		log.Info().Msgf("%s", url)
+	}
 }
 
 type crawler struct {
@@ -113,21 +115,8 @@ func extractLinksFromURL(httpClient *http.Client, userAgent string, source strin
 	if err != nil {
 		return nil, err
 	}
-	log.Info().Str("url", source).Int("size", len(result.ContentText)).Msgf("Found URL")
-	links := dom.QuerySelectorAll(result.ContentNode, "a[href]")
-	urls := make([]string, 0, len(links))
-	for _, link := range links {
-		href := dom.GetAttribute(link, "href")
-		if href != "" {
-			parsed, err := nurl.Parse(href)
-			if err == nil {
-				parsed.Fragment = ""
-				href = parsed.String()
-			}
-			urls = append(urls, href)
-		}
-	}
-	return urls, nil
+	log.Info().Str("url", source).Int("size", len(result.URLs)).Msgf("Found URL")
+	return result.URLs, nil
 }
 
 func (c *crawler) extractURLs(context context.Context, source string) ([]string, error) {
@@ -216,7 +205,7 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 					continue
 				}
 				if childTLD != sourceTLD {
-					log.Info().Msgf("Skipping URL %s because it's a different TLD", child)
+					log.Debug().Msgf("Skipping URL %s because it's a different TLD", child)
 					continue
 				}
 				allChildren = append(allChildren, child)
