@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	nurl "net/url"
@@ -79,7 +80,7 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 		sameDomain:     sameDomain,
 		maxURLs:        nURL,
 		maxDepth:       nDepth,
-	}).extractURLs(args[0])
+	}).extractURLs(context.Background(), args[0])
 
 	if err != nil {
 		log.Fatal().Msgf("process failed: %v", err)
@@ -118,13 +119,18 @@ func extractLinksFromURL(httpClient *http.Client, userAgent string, source strin
 	for _, link := range links {
 		href := dom.GetAttribute(link, "href")
 		if href != "" {
+			parsed, err := nurl.Parse(href)
+			if err == nil {
+				parsed.Fragment = ""
+				href = parsed.String()
+			}
 			urls = append(urls, href)
 		}
 	}
 	return urls, nil
 }
 
-func (c *crawler) extractURLs(source string) ([]string, error) {
+func (c *crawler) extractURLs(context context.Context, source string) ([]string, error) {
 	maxURLs := c.maxURLs
 	maxDepth := c.maxDepth
 
@@ -158,6 +164,7 @@ func (c *crawler) extractURLs(source string) ([]string, error) {
 
 		// Channel to collect children from all goroutines
 		childrenCh := make(chan []string, len(currentLevel))
+		goroutinesStarted := 0
 
 		// Process all URLs at this depth in parallel
 		for _, item := range currentLevel {
@@ -168,10 +175,11 @@ func (c *crawler) extractURLs(source string) ([]string, error) {
 			result = append(result, item.url)
 
 			// Acquire semaphore for parallelism
-			if err := c.semaphore.Acquire(nil, 1); err != nil {
+			if err := c.semaphore.Acquire(context, 1); err != nil {
 				childrenCh <- nil
 				continue
 			}
+			goroutinesStarted++
 
 			go func(item struct {
 				url   string
@@ -193,7 +201,7 @@ func (c *crawler) extractURLs(source string) ([]string, error) {
 
 		// Collect all children from this depth
 		var allChildren []string
-		for i := 0; i < len(currentLevel); i++ {
+		for i := 0; i < goroutinesStarted; i++ {
 			children := <-childrenCh
 			for _, child := range children {
 				if visited[child] {
