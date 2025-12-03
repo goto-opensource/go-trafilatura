@@ -19,7 +19,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	nurl "net/url"
@@ -29,7 +28,6 @@ import (
 	"github.com/markusmobius/go-trafilatura"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/publicsuffix"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -48,7 +46,7 @@ func crawlCmd() *cobra.Command {
 	flags.Int("delay", 0, "delay between each url download in seconds (default 0)")
 
 	flags.Int("max_urls", 0, "maximum number of URLs to download (default 0)")
-	flags.Int("max_depth", 0, "maximum recursion depth (default 0)")
+	flags.Int("max_depth", 2, "maximum recursion depth (default 2)")
 	flags.Bool("same_domain", true, "restrict recursion to same domain")
 
 	return cmd
@@ -71,7 +69,7 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 	opts.Focus = trafilatura.FavorPrecision
 	opts.EnableFallback = false
 
-	err := (&crawler{
+	urls, err := (&crawler{
 		userAgent:      userAgent,
 		httpClient:     createHttpClient(cmd),
 		extractOptions: opts,
@@ -79,11 +77,14 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 		delay:          time.Duration(delay) * time.Second,
 		cancelOnError:  false,
 		sameDomain:     sameDomain,
-	}).extractURLs(context.Background(), args[0])
+		maxURLs:        nURL,
+		maxDepth:       nDepth,
+	}).extractURLs(args[0])
 
 	if err != nil {
 		log.Fatal().Msgf("process failed: %v", err)
 	}
+	log.Info().Msgf("Crawled %d URLs", len(urls))
 }
 
 type crawler struct {
@@ -94,6 +95,8 @@ type crawler struct {
 	delay          time.Duration
 	cancelOnError  bool
 	sameDomain     bool
+	maxURLs        int
+	maxDepth       int
 	urls           []string
 }
 
@@ -121,56 +124,64 @@ func extractLinksFromURL(httpClient *http.Client, userAgent string, source strin
 	return urls, nil
 }
 
-func (c *crawler) extractURLs(ctx context.Context, source string) ([]string, error) {
-	g, ctx := errgroup.WithContext(context.Background())
+func (c *crawler) extractURLs(source string) ([]string, error) {
+	maxURLs := c.maxURLs
+	maxDepth := c.maxDepth
 
-	children, err := extractLinksFromURL(c.httpClient, c.userAgent, source, c.extractOptions)
+	visited := make(map[string]bool)
+	var result []string
+	queue := []struct {
+		url   string
+		depth int
+	}{{source, 0}}
+
+	sourceURL, err := nurl.Parse(source)
 	if err != nil {
-		log.Error().Msgf("failed to extract links: %v", err)
+		return nil, err
 	}
-	// process urls
-	log.Info().Str("url", source).Int("size", len(urls)).Msgf("Found URLs")
+	sourceTLD, err := publicsuffix.EffectiveTLDPlusOne(sourceURL.Hostname())
+	if err != nil {
+		return nil, err
+	}
 
-	// recursively extract URLS from the same tldr only
-	for _, url := range children {
-		// Only allow following same domain
-		if c.sameDomain {
-			sourceURL, _ := nurl.Parse(source)
-			urlToCheck, _ := nurl.Parse(url)
-			sourceTLD, _ := publicsuffix.EffectiveTLDPlusOne(sourceURL.Hostname())
-			urlTLD, _ := publicsuffix.EffectiveTLDPlusOne(urlToCheck.Hostname())
+	for len(queue) > 0 && (maxURLs == 0 || len(result) < maxURLs) {
+		item := queue[0]
+		queue = queue[1:]
 
-			if sourceTLD != urlTLD {
-				log.Info().Msgf("Skipping URL %s because it's a different TLD", url)
-				continue
-			}
+		if visited[item.url] || (maxDepth > 0 && item.depth > maxDepth) {
+			continue
+		}
+		visited[item.url] = true
+		result = append(result, item.url)
+
+		children, err := extractLinksFromURL(c.httpClient, c.userAgent, item.url, c.extractOptions)
+		if err != nil {
+			log.Warn().Msgf("failed to extract links: %v", err)
+			continue
 		}
 
-		g.Go(func() error {
-			// Acquire semaphore to limit concurrent download
-			err := c.semaphore.Acquire(ctx, 1)
-			if err != nil {
-				return nil
+		for _, child := range children {
+			if visited[child] {
+				continue
 			}
-			next_children, err := extractLinksFromURL(c.httpClient, c.userAgent, source, c.extractOptions)
-
-			c.semaphore.Release(1)
+			childURL, err := nurl.Parse(child)
 			if err != nil {
-				if c.cancelOnError {
-					return err
-				}
-				log.Warn().Msgf("failed to process %s: %v", url, err)
-				return nil
+				continue
 			}
-			log.Info().Str("url", source).Int("size", len(result.ContentText)).Msgf("Found URL")
-
-			// TODO
-
-			// Add delay (to prevent too many request to target server)
-			time.Sleep(c.delay)
-			return nil
-		})
+			childTLD, err := publicsuffix.EffectiveTLDPlusOne(childURL.Hostname())
+			if err != nil {
+				continue
+			}
+			if childTLD != sourceTLD {
+				log.Info().Msgf("Skipping URL %s because it's a different TLD", child)
+				continue
+			}
+			queue = append(queue, struct {
+				url   string
+				depth int
+			}{child, item.depth + 1})
+		}
 	}
 
-	return g.Wait()
+	return result, nil
 }
