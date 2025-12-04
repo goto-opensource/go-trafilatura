@@ -71,6 +71,11 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 	opts.Focus = trafilatura.FavorPrecision
 	opts.EnableFallback = false
 
+	startURL, err := nurl.Parse(args[0])
+	if err != nil {
+		log.Fatal().Msgf("invalid start URL: %v", err)
+	}
+
 	urls, err := (&crawler{
 		userAgent:      userAgent,
 		httpClient:     createHttpClient(cmd),
@@ -81,14 +86,14 @@ func crawlCmdHandler(cmd *cobra.Command, args []string) {
 		sameDomain:     !notSameDomain,
 		maxURLs:        nURL,
 		maxDepth:       nDepth,
-	}).extractURLs(context.Background(), args[0])
+	}).extractURLs(context.Background(), *startURL)
 
 	if err != nil {
 		log.Fatal().Msgf("process failed: %v", err)
 	}
 	log.Info().Msgf("Crawled %d URLs", len(urls))
 	for _, url := range urls {
-		log.Info().Msgf("%s", url)
+		log.Info().Msgf("%s", url.String())
 	}
 }
 
@@ -102,33 +107,30 @@ type crawler struct {
 	sameDomain     bool
 	maxURLs        int
 	maxDepth       int
-	urls           []string
+	urls           []nurl.URL
 }
 
-func extractLinksFromURL(httpClient *http.Client, userAgent string, source string, opts trafilatura.Options) ([]string, error) {
-	if !isValidURL(source) {
-		return nil, fmt.Errorf("invalid URL: %s", source)
+func extractLinksFromURL(httpClient *http.Client, userAgent string, source nurl.URL, opts trafilatura.Options) ([]nurl.URL, error) {
+	if !isValidURL(source.String()) {
+		return nil, fmt.Errorf("invalid URL: %s", source.String())
 	}
-	parsedURL, err := nurl.ParseRequestURI(source)
+	result, err := processURL(httpClient, userAgent, &source, opts)
 	if err != nil {
 		return nil, err
 	}
-	result, err := processURL(httpClient, userAgent, parsedURL, opts)
-	if err != nil {
-		return nil, err
-	}
-	log.Info().Str("url", source).Int("size", len(result.URLs)).Msgf("Found URL")
+	log.Info().Str("url", source.String()).Int("size", len(result.URLs)).Msgf("Found URL")
+
 	return result.URLs, nil
 }
 
-func (c *crawler) extractURLs(context context.Context, source string) ([]string, error) {
+func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.URL, error) {
 	maxURLs := c.maxURLs
 	maxDepth := c.maxDepth
 
 	visited := make(map[string]bool)
-	var result []string
+	var result []nurl.URL
 	queue := []struct {
-		url   string
+		url   nurl.URL
 		depth int
 	}{{source, 0}}
 
@@ -141,7 +143,7 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 		// Group all items at the current depth
 		currentDepth := queue[0].depth
 		var currentLevel []struct {
-			url   string
+			url   nurl.URL
 			depth int
 		}
 		for len(queue) > 0 && queue[0].depth == currentDepth {
@@ -150,16 +152,19 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 		}
 
 		// Channel to collect children from all goroutines
-		childrenCh := make(chan []string, len(currentLevel))
+		childrenCh := make(chan []nurl.URL, len(currentLevel))
 		goroutinesStarted := 0
 
 		// Process all URLs at this depth in parallel
 		for _, item := range currentLevel {
-			if visited[item.url] || (maxDepth > 0 && item.depth > maxDepth) {
+			if visited[item.url.String()] || (maxDepth > 0 && item.depth > maxDepth) {
 				continue
 			}
-			visited[item.url] = true
+			visited[item.url.String()] = true
 			result = append(result, item.url)
+			if maxURLs > 0 && len(result) >= maxURLs {
+				break
+			}
 
 			// Acquire semaphore for parallelism
 			if err := c.semaphore.Acquire(context, 1); err != nil {
@@ -169,7 +174,7 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 			goroutinesStarted++
 
 			go func(item struct {
-				url   string
+				url   nurl.URL
 				depth int
 			}) {
 				defer c.semaphore.Release(1)
@@ -187,11 +192,11 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 		}
 
 		// Collect all children from this depth
-		var allChildren []string
+		var allChildren []nurl.URL
 		for i := 0; i < goroutinesStarted; i++ {
 			children := <-childrenCh
 			for _, child := range children {
-				if visited[child] {
+				if visited[child.String()] {
 					continue
 				}
 				if c.sameDomain {
@@ -200,7 +205,7 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 						continue
 					}
 					if childTLD != sourceTLD {
-						log.Debug().Msgf("Skipping URL %s because it's a different TLD", child)
+						log.Debug().Msgf("Skipping URL %s because it's a different TLD", child.String())
 						continue
 					}
 				}
@@ -210,9 +215,9 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 
 		// Enqueue deduplicated children for next depth
 		for _, child := range allChildren {
-			if !visited[child] {
+			if !visited[child.String()] {
 				queue = append(queue, struct {
-					url   string
+					url   nurl.URL
 					depth int
 				}{child, currentDepth + 1})
 			}
@@ -222,12 +227,8 @@ func (c *crawler) extractURLs(context context.Context, source string) ([]string,
 	return result, nil
 }
 
-func getTopLevelDomain(domain string) (string, error) {
-	domainURL, err := nurl.Parse(domain)
-	if err != nil {
-		return "", err
-	}
-	topLevelDomain, err := publicsuffix.EffectiveTLDPlusOne(domainURL.Hostname())
+func getTopLevelDomain(domain nurl.URL) (string, error) {
+	topLevelDomain, err := publicsuffix.EffectiveTLDPlusOne(domain.Hostname())
 	if err != nil {
 		return "", err
 	}
