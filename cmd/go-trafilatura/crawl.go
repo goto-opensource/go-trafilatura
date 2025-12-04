@@ -182,29 +182,32 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 				break
 			}
 
-			// Acquire semaphore for parallelism
-			if err := c.semaphore.Acquire(context, 1); err != nil {
-				childrenCh <- nil
-				continue
-			}
-			goroutinesStarted++
-
-			go func(item struct {
-				url   nurl.URL
-				depth int
-			}) {
-				defer c.semaphore.Release(1)
-				children, err := extractLinksFromURL(c.httpClient, c.userAgent, item.url, c.extractOptions)
-				if err != nil {
-					log.Warn().Msgf("failed to extract links: %v", err)
+			// Only extract links if we haven't reached maxDepth
+			if maxDepth == 0 || item.depth < maxDepth {
+				// Acquire semaphore for parallelism
+				if err := c.semaphore.Acquire(context, 1); err != nil {
 					childrenCh <- nil
-					return
+					continue
 				}
-				if c.delay > 0 {
-					time.Sleep(c.delay)
-				}
-				childrenCh <- children
-			}(item)
+				goroutinesStarted++
+
+				go func(item struct {
+					url   nurl.URL
+					depth int
+				}) {
+					defer c.semaphore.Release(1)
+					children, err := extractLinksFromURL(c.httpClient, c.userAgent, item.url, c.extractOptions)
+					if err != nil {
+						log.Warn().Msgf("failed to extract links: %v", err)
+						childrenCh <- nil
+						return
+					}
+					if c.delay > 0 {
+						time.Sleep(c.delay)
+					}
+					childrenCh <- children
+				}(item)
+			}
 		}
 
 		// Collect all children from this depth
