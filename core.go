@@ -177,7 +177,9 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 				parsed, err := nurl.Parse(href)
 				if err == nil {
 					parsed.Fragment = ""
-					urls = append(urls, *parsed)
+					if parsed.String() != "" {
+						urls = append(urls, *parsed)
+					}
 				}
 			}
 		}
