@@ -123,6 +123,21 @@ func extractLinksFromURL(httpClient *http.Client, userAgent string, source nurl.
 	return result.URLs, nil
 }
 
+// normalizeURLString returns the URL as a string, removing a trailing slash unless the path is just "/"
+func normalizeURLString(u nurl.URL) string {
+	s := u.String()
+	if u.Path == "/" || u.Path == "" {
+		return s
+	}
+	if len(u.Path) > 1 && u.Path[len(u.Path)-1] == '/' {
+		// Remove trailing slash from path
+		copyU := u
+		copyU.Path = u.Path[:len(u.Path)-1]
+		return copyU.String()
+	}
+	return s
+}
+
 func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.URL, error) {
 	maxURLs := c.maxURLs
 	maxDepth := c.maxDepth
@@ -157,10 +172,11 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 
 		// Process all URLs at this depth in parallel
 		for _, item := range currentLevel {
-			if visited[item.url.String()] || (maxDepth > 0 && item.depth > maxDepth) {
+			norm := normalizeURLString(item.url)
+			if visited[norm] || (maxDepth > 0 && item.depth > maxDepth) {
 				continue
 			}
-			visited[item.url.String()] = true
+			visited[norm] = true
 			result = append(result, item.url)
 			if maxURLs > 0 && len(result) >= maxURLs {
 				break
@@ -196,7 +212,8 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 		for i := 0; i < goroutinesStarted; i++ {
 			children := <-childrenCh
 			for _, child := range children {
-				if visited[child.String()] {
+				norm := normalizeURLString(child)
+				if visited[norm] {
 					continue
 				}
 				if c.sameDomain {
@@ -215,7 +232,8 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 
 		// Enqueue deduplicated children for next depth
 		for _, child := range allChildren {
-			if !visited[child.String()] {
+			norm := normalizeURLString(child)
+			if !visited[norm] {
 				queue = append(queue, struct {
 					url   nurl.URL
 					depth int
