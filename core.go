@@ -67,7 +67,7 @@ type ExtractResult struct {
 	Metadata Metadata
 
 	// URLs are the extracted hyperlinks from the document ( <a href> elements )
-	URLs []string
+	URLs []nurl.URL
 }
 
 // Extract parses a reader and find the main readable content.
@@ -168,7 +168,7 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 	}
 
 	// Include links
-	urls := make([]string, 0)
+	urls := make([]nurl.URL, 0)
 	if opts.IncludeLinks || opts.IncludeLinksOnly {
 		links := dom.QuerySelectorAll(postBody, "a[href]")
 		for _, link := range links {
@@ -177,9 +177,8 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 				parsed, err := nurl.Parse(href)
 				if err == nil {
 					parsed.Fragment = ""
-					href = parsed.String()
+					urls = append(urls, *parsed)
 				}
-				urls = append(urls, href)
 			}
 		}
 	}
