@@ -26,9 +26,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-shiori/dom"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/lru"
-	"github.com/markusmobius/go-trafilatura/internal/selector"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/lru"
+	"github.com/goto-opensource/go-trafilatura/internal/selector"
 	"golang.org/x/net/html"
 )
 

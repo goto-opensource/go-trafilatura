@@ -31,9 +31,9 @@ import (
 
 	"github.com/forPelevin/gomoji"
 	"github.com/go-shiori/dom"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/selector"
 	"github.com/markusmobius/go-htmldate"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/selector"
 	"golang.org/x/net/html"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"

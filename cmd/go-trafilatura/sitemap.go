@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markusmobius/go-trafilatura"
+	"github.com/goto-opensource/go-trafilatura"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/semaphore"

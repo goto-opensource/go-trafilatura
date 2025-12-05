@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/markusmobius/go-trafilatura"
+	"github.com/goto-opensource/go-trafilatura"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/publicsuffix"
 	"golang.org/x/sync/semaphore"

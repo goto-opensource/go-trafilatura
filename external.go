@@ -27,9 +27,9 @@ import (
 
 	"github.com/go-shiori/dom"
 	"github.com/go-shiori/go-readability"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/selector"
 	distiller "github.com/markusmobius/go-domdistiller"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/selector"
 	"golang.org/x/net/html"
 )
 

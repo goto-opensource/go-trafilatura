@@ -29,9 +29,9 @@ import (
 
 	"github.com/RadhiFadlillah/whatlanggo"
 	"github.com/go-shiori/dom"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/lru"
-	"github.com/markusmobius/go-trafilatura/internal/re2go"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/lru"
+	"github.com/goto-opensource/go-trafilatura/internal/re2go"
 	"golang.org/x/net/html"
 )
 

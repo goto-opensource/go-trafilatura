@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/go-shiori/dom"
-	"github.com/markusmobius/go-trafilatura"
+	"github.com/goto-opensource/go-trafilatura"
 )
 
 var (

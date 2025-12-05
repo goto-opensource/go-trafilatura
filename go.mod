@@ -1,4 +1,4 @@
-module github.com/markusmobius/go-trafilatura
+module github.com/goto-opensource/go-trafilatura
 
 go 1.24.1
 
@@ -43,5 +43,3 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/markusmobius/go-trafilatura => github.com/goto-opensource/go-trafilatura v1.13.0-SNAPSHOT
