@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	nurl "net/url"
+	"sync"
 	"time"
 
 	"github.com/markusmobius/go-trafilatura"
@@ -138,39 +139,38 @@ func normalizeURLString(u nurl.URL) string {
 	return s
 }
 
-func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.URL, error) {
+type crawlItem struct {
+	url   nurl.URL
+	depth int
+}
+
+func (c *crawler) extractURLs(ctx context.Context, source nurl.URL) ([]nurl.URL, error) {
 	maxURLs := c.maxURLs
 	maxDepth := c.maxDepth
 
 	visited := make(map[string]bool)
 	var result []nurl.URL
-	queue := []struct {
-		url   nurl.URL
-		depth int
-	}{{source, 0}}
+	queue := []crawlItem{{url: source, depth: 0}}
 
 	sourceTLD, err := getTopLevelDomain(source)
 	if err != nil {
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	for len(queue) > 0 && (maxURLs == 0 || len(result) < maxURLs) {
-		// Group all items at the current depth
 		currentDepth := queue[0].depth
-		var currentLevel []struct {
-			url   nurl.URL
-			depth int
-		}
+		var currentLevel []crawlItem
 		for len(queue) > 0 && queue[0].depth == currentDepth {
 			currentLevel = append(currentLevel, queue[0])
 			queue = queue[1:]
 		}
 
-		// Channel to collect children from all goroutines
 		childrenCh := make(chan []nurl.URL, len(currentLevel))
-		goroutinesStarted := 0
+		var wg sync.WaitGroup
 
-		// Process all URLs at this depth in parallel
 		for _, item := range currentLevel {
 			norm := normalizeURLString(item.url)
 			if visited[norm] || (maxDepth > 0 && item.depth > maxDepth) {
@@ -179,24 +179,24 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 			visited[norm] = true
 			result = append(result, item.url)
 			if maxURLs > 0 && len(result) >= maxURLs {
+				cancel()
 				break
 			}
 
-			// Only extract links if we haven't reached maxDepth
 			if maxDepth == 0 || item.depth < maxDepth {
-				// Acquire semaphore for parallelism
-				if err := c.semaphore.Acquire(context, 1); err != nil {
+				if err := c.semaphore.Acquire(ctx, 1); err != nil {
 					childrenCh <- nil
 					continue
 				}
-				goroutinesStarted++
-
-				go func(item struct {
-					url   nurl.URL
-					depth int
-				}) {
+				wg.Add(1)
+				go func(item crawlItem) {
+					defer wg.Done()
 					defer c.semaphore.Release(1)
 					children, err := extractLinksFromURL(c.httpClient, c.userAgent, item.url, c.extractOptions)
+					if ctx.Err() != nil {
+						log.Info().Msgf("cancelled extraction of children URLs: %s", item.url.String())
+						return
+					}
 					if err != nil {
 						log.Warn().Msgf("failed to extract links: %v", err)
 						childrenCh <- nil
@@ -210,10 +210,11 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 			}
 		}
 
-		// Collect all children from this depth
+		wg.Wait()
+		close(childrenCh)
+
 		var allChildren []nurl.URL
-		for i := 0; i < goroutinesStarted; i++ {
-			children := <-childrenCh
+		for children := range childrenCh {
 			for _, child := range children {
 				norm := normalizeURLString(child)
 				if visited[norm] {
@@ -233,14 +234,10 @@ func (c *crawler) extractURLs(context context.Context, source nurl.URL) ([]nurl.
 			}
 		}
 
-		// Enqueue deduplicated children for next depth
 		for _, child := range allChildren {
 			norm := normalizeURLString(child)
 			if !visited[norm] {
-				queue = append(queue, struct {
-					url   nurl.URL
-					depth int
-				}{child, currentDepth + 1})
+				queue = append(queue, crawlItem{url: child, depth: currentDepth + 1})
 			}
 		}
 	}
