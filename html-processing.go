@@ -23,6 +23,7 @@ package trafilatura
 
 import (
 	"maps"
+	"net/url"
 	"unicode/utf8"
 
 	"github.com/go-shiori/dom"
@@ -515,8 +516,12 @@ func convertTags(tree *html.Node, opts Options) {
 			// Clear up existing attributes
 			elem.Attr = nil
 
-			// Convert relative URL to absolute
+			// Convert relative URL to absolute, only for same scheme
 			if href != "" {
+				hrefURL, err := url.Parse(href)
+				if err == nil && hrefURL.Scheme != "" && hrefURL.Scheme != opts.OriginalURL.Scheme {
+					continue
+				}
 				href = createAbsoluteURL(href, opts.OriginalURL)
 				dom.SetAttribute(elem, "href", href)
 			}
