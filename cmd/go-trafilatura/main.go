@@ -80,7 +80,7 @@ func main() {
 	flags.StringP("user-agent", "u", defaultUserAgent, "set custom user agent")
 
 	// Add sub commands
-	rootCmd.AddCommand(batchCmd(), sitemapCmd(), feedCmd(), crawlCmd())
+	rootCmd.AddCommand(batchCmd(), sitemapCmd(), feedCmd())
 
 	// Execute
 	err := rootCmd.Execute()
