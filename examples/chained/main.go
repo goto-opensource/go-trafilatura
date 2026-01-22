@@ -9,9 +9,9 @@ import (
 
 	"github.com/go-shiori/dom"
 	"github.com/go-shiori/go-readability"
+	"github.com/goto-opensource/go-trafilatura"
 	distiller "github.com/markusmobius/go-domdistiller"
 	"github.com/markusmobius/go-htmldate"
-	"github.com/markusmobius/go-trafilatura"
 	"golang.org/x/net/html"
 )
 

@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-shiori/dom"
 	"github.com/go-shiori/go-readability"
+	gt "github.com/goto-opensource/go-trafilatura"
 	distiller "github.com/markusmobius/go-domdistiller"
-	gt "github.com/markusmobius/go-trafilatura"
 	"golang.org/x/net/html"
 	"golang.org/x/sync/semaphore"
 )

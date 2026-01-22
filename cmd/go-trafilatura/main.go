@@ -1,6 +1,6 @@
 // This file is part of go-trafilatura, Go package for extracting readable
 // content, comments and metadata from a web page. Source available in
-// <https://github.com/markusmobius/go-trafilatura>.
+// <https://github.com/goto-opensource/go-trafilatura>.
 //
 // Copyright (C) 2021 Markus Mobius
 //
@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markusmobius/go-trafilatura"
+	"github.com/goto-opensource/go-trafilatura"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/html"
@@ -47,7 +47,7 @@ func init() {
 }
 
 // defaultUserAgent is the default user agent to use, which is Firefox's.
-const defaultUserAgent = "Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
+const defaultUserAgent = "Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/144.0"
 
 func main() {
 	// Create root command
@@ -65,11 +65,13 @@ func main() {
 	flags := rootCmd.PersistentFlags()
 	flags.StringP("format", "f", "", "output format for the extract result, either 'html' (default), 'txt' or 'json'")
 	flags.StringP("language", "l", "", "target language (ISO 639-1 codes)")
+	flags.StringP("focus", "F", "balanced", "extraction focus 'balanced' (default), 'recall' or 'precision'")
 	flags.Bool("no-fallback", false, "disable fallback extraction using readability and dom-distiller")
 	flags.Bool("no-comments", false, "exclude comments  extraction result")
 	flags.Bool("no-tables", false, "include tables in extraction result")
 	flags.Bool("images", false, "include images in extraction result (experimental)")
 	flags.Bool("links", false, "keep links in extraction result (experimental)")
+	flags.Bool("links-only", false, "keep only links in extraction result (experimental)")
 	flags.Bool("deduplicate", false, "filter out duplicate segments and sections")
 	flags.Bool("has-metadata", false, "only output documents with title, URL and date")
 	flags.BoolP("verbose", "v", false, "enable log message")
@@ -193,9 +195,19 @@ func createExtractorOptions(cmd *cobra.Command) trafilatura.Options {
 	opts.ExcludeTables, _ = flags.GetBool("no-tables")
 	opts.IncludeImages, _ = flags.GetBool("images")
 	opts.IncludeLinks, _ = flags.GetBool("links")
+	opts.IncludeLinksOnly, _ = flags.GetBool("links-only")
 	opts.Deduplicate, _ = flags.GetBool("deduplicate")
 	opts.HasEssentialMetadata, _ = flags.GetBool("has-metadata")
 	opts.EnableLog, _ = flags.GetBool("verbose")
+	focus, _ := flags.GetString("focus")
+	switch strings.ToLower(focus) {
+	case "recall":
+		opts.Focus = trafilatura.FavorRecall
+	case "precision":
+		opts.Focus = trafilatura.FavorPrecision
+	default:
+		opts.Focus = trafilatura.Balanced
+	}
 	return opts
 }
 

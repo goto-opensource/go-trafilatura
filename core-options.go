@@ -1,6 +1,6 @@
 // This file is part of go-trafilatura, Go package for extracting readable
 // content, comments and metadata from a web page. Source available in
-// <https://github.com/markusmobius/go-trafilatura>.
+// <https://github.com/goto-opensource/go-trafilatura>.
 //
 // Copyright (C) 2021 Markus Mobius
 //
@@ -108,6 +108,10 @@ type Options struct {
 	// IncludeLinks specify whether the extraction result will include links along with their
 	// targets (experimental).
 	IncludeLinks bool
+
+	// IncludeLinksOnly specify whether the extraction result will include only links along with their
+	// targets (experimental) and no other content
+	IncludeLinksOnly bool
 
 	// BlacklistedAuthors is list of author names to be excluded from extraction result.
 	BlacklistedAuthors []string

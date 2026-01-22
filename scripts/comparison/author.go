@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markusmobius/go-trafilatura"
+	"github.com/goto-opensource/go-trafilatura"
 )
 
 func compareAuthorExtraction() {

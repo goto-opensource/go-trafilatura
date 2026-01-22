@@ -1,6 +1,6 @@
 // This file is part of go-trafilatura, Go package for extracting readable
 // content, comments and metadata from a web page. Source available in
-// <https://github.com/markusmobius/go-trafilatura>.
+// <https://github.com/goto-opensource/go-trafilatura>.
 //
 // Copyright (C) 2021 Markus Mobius
 //
@@ -23,18 +23,20 @@ package trafilatura
 
 import (
 	"maps"
+	"net/url"
 	"unicode/utf8"
 
 	"github.com/go-shiori/dom"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/lru"
-	"github.com/markusmobius/go-trafilatura/internal/selector"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/lru"
+	"github.com/goto-opensource/go-trafilatura/internal/selector"
 	"golang.org/x/net/html"
 )
 
 // docCleaning cleans the document by discarding unwanted elements.
 // In original it's named `tree_cleaning`.
 func docCleaning(doc *html.Node, opts Options) {
+
 	// Determine cleaning strategy
 	cleaningList := maps.Clone(tagsToClean)
 	strippingList := maps.Clone(tagsToStrip)
@@ -60,7 +62,7 @@ func docCleaning(doc *html.Node, opts Options) {
 		}
 	}
 
-	if opts.IncludeImages {
+	if opts.IncludeImages && !opts.IncludeLinksOnly {
 		// Many websites have <img> inside <figure> or <picture> or <source> tag
 		delete(cleaningList, "figure")
 		delete(cleaningList, "picture")
@@ -484,7 +486,7 @@ func deleteByLinkDensity(subTree *html.Node, opts Options, backtracking bool, ta
 // to be HTML, we won't do it here.
 func convertTags(tree *html.Node, opts Options) {
 	// Delete links for faster processing
-	if !opts.IncludeLinks {
+	if !opts.IncludeLinks && !opts.IncludeLinksOnly {
 		// Prepare selector
 		cssSelector := "div a, ul a, ol a, dl a, p a"
 		if !opts.ExcludeTables {
@@ -514,8 +516,12 @@ func convertTags(tree *html.Node, opts Options) {
 			// Clear up existing attributes
 			elem.Attr = nil
 
-			// Convert relative URL to absolute
+			// Convert relative URL to absolute, only for same scheme
 			if href != "" {
+				hrefURL, err := url.Parse(href)
+				if err == nil && hrefURL.Scheme != "" && hrefURL.Scheme != opts.OriginalURL.Scheme {
+					continue
+				}
 				href = createAbsoluteURL(href, opts.OriginalURL)
 				dom.SetAttribute(elem, "href", href)
 			}

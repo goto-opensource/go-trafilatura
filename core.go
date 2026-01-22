@@ -1,6 +1,6 @@
 // This file is part of go-trafilatura, Go package for extracting readable
 // content, comments and metadata from a web page. Source available in
-// <https://github.com/markusmobius/go-trafilatura>.
+// <https://github.com/goto-opensource/go-trafilatura>.
 //
 // Copyright (C) 2021 Markus Mobius
 //
@@ -30,9 +30,9 @@ import (
 
 	"github.com/andybalholm/cascadia"
 	"github.com/go-shiori/dom"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/lru"
-	"github.com/markusmobius/go-trafilatura/internal/selector"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/lru"
+	"github.com/goto-opensource/go-trafilatura/internal/selector"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/html"
 )
@@ -65,6 +65,9 @@ type ExtractResult struct {
 	// Metadata is the extracted metadata which taken from several sources i.e.
 	// <meta> tags, JSON+LD and OpenGraph scheme.
 	Metadata Metadata
+
+	// URLs are the extracted hyperlinks from the document ( <a href> elements )
+	URLs []nurl.URL
 }
 
 // Extract parses a reader and find the main readable content.
@@ -143,7 +146,7 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 	var lenComments int
 	var commentsBody *html.Node
 
-	if !opts.ExcludeComments { // Comment is included
+	if !opts.ExcludeComments && !opts.IncludeLinksOnly { // Comment is included
 		commentsBody, tmpComments = extractComments(doc, cache, opts)
 		lenComments = utf8.RuneCountInString(tmpComments)
 	} else if opts.Focus == FavorPrecision {
@@ -154,14 +157,32 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 	postBody, tmpBodyText := extractContent(doc, cache, opts)
 
 	// Use fallback if necessary
-	if opts.EnableFallback {
+	if opts.EnableFallback && !opts.IncludeLinksOnly {
 		postBody, tmpBodyText = compareExternalExtraction(docBackup1, postBody, opts)
 	}
 
-	// Rescue: try to use original/dirty tree
+	// Rescue: try to use original/dirty tree -- only != FavorPrecision
 	lenText := utf8.RuneCountInString(tmpBodyText)
 	if lenText < opts.Config.MinExtractedSize && opts.Focus != FavorPrecision {
 		postBody, tmpBodyText = baseline(docBackup2)
+	}
+
+	// Include links
+	urls := make([]nurl.URL, 0)
+	if opts.IncludeLinks || opts.IncludeLinksOnly {
+		links := dom.QuerySelectorAll(postBody, "a[href]")
+		for _, link := range links {
+			href := dom.GetAttribute(link, "href")
+			if href != "" {
+				parsed, err := nurl.Parse(href)
+				if err == nil {
+					parsed.Fragment = ""
+					if parsed.String() != "" {
+						urls = append(urls, *parsed)
+					}
+				}
+			}
+		}
 	}
 
 	// Tree size sanity check
@@ -182,9 +203,11 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 		logDebug(opts, "not enough comments: %s", opts.OriginalURL)
 	}
 
-	lenText = utf8.RuneCountInString(tmpBodyText)
-	if lenText < opts.Config.MinOutputSize && lenComments < opts.Config.MinOutputCommentSize {
-		return nil, fmt.Errorf("text and comments are not long enough: %d %d", lenText, lenComments)
+	if !opts.IncludeLinksOnly {
+		lenText = utf8.RuneCountInString(tmpBodyText)
+		if lenText < opts.Config.MinOutputSize && lenComments < opts.Config.MinOutputCommentSize {
+			return nil, fmt.Errorf("text and comments are not long enough: %d %d", lenText, lenComments)
+		}
 	}
 
 	// Check duplicates at body level
@@ -215,5 +238,6 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 		CommentsNode: commentsBody,
 		CommentsText: tmpComments,
 		Metadata:     metadata,
+		URLs:         urls,
 	}, nil
 }

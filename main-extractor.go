@@ -6,9 +6,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-shiori/dom"
-	"github.com/markusmobius/go-trafilatura/internal/etree"
-	"github.com/markusmobius/go-trafilatura/internal/lru"
-	"github.com/markusmobius/go-trafilatura/internal/selector"
+	"github.com/goto-opensource/go-trafilatura/internal/etree"
+	"github.com/goto-opensource/go-trafilatura/internal/lru"
+	"github.com/goto-opensource/go-trafilatura/internal/selector"
 	"golang.org/x/net/html"
 )
 
@@ -667,6 +667,13 @@ func extractContent(doc *html.Node, cache *lru.Cache, opts Options) (*html.Node,
 	backupDoc := dom.Clone(doc, true)
 	resultBody := dom.CreateElement("body")
 
+	if opts.IncludeLinksOnly {
+		links := dom.QuerySelectorAll(doc, "a[href]")
+		for _, link := range links {
+			dom.AppendChild(resultBody, dom.Clone(link, true))
+		}
+		return resultBody, ""
+	}
 	// Prepare potential tags
 	potentialTags := maps.Clone(tagCatalog)
 
