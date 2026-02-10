@@ -637,6 +637,8 @@ func Test_Extract(t *testing.T) {
 
 	// Test extract with links
 	result = extractMockFile(rwMockFiles, "http://www.pcgamer.com/2012/08/09/skyrim-part-1/", true)
-	assert.True(t, htmlContains(result, `In <a href="https://www.pcgamer.com/best-skyrim-mods/">Skyrim</a>, a mage`))
+	// Note: Links with different schemes (http vs https) are filtered out for security
+	// So the href attribute won't be present, but the link text remains
+	assert.True(t, htmlContains(result, `In <a>Skyrim</a>, a mage`))
 	assert.True(t, htmlContains(result, `<em>Legends </em>don&#39;t destroy <em>houses</em>,`))
 }

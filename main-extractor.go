@@ -664,7 +664,6 @@ func pruneUnwantedSections(subTree *html.Node, potentialTags map[string]struct{}
 // extractContent find the main content of a page using a set of selectors, then
 // extract relevant elements, strip them of unwanted subparts and convert them.
 func extractContent(doc *html.Node, cache *lru.Cache, opts Options) (*html.Node, string) {
-	backupDoc := dom.Clone(doc, true)
 	resultBody := dom.CreateElement("body")
 
 	if opts.IncludeLinksOnly {
@@ -674,6 +673,7 @@ func extractContent(doc *html.Node, cache *lru.Cache, opts Options) (*html.Node,
 		}
 		return resultBody, ""
 	}
+
 	// Prepare potential tags
 	potentialTags := maps.Clone(tagCatalog)
 
@@ -702,7 +702,7 @@ func extractContent(doc *html.Node, cache *lru.Cache, opts Options) (*html.Node,
 			continue
 		}
 
-		// Prune the subtree
+		// Prune the subtree (this creates a clone and don't touch the original tree)
 		subTree = pruneUnwantedSections(subTree, potentialTags, opts)
 		// TODO: second pass?
 		// deleteByLinkDensity(subTree, opts, false, listXmlListTags...)
@@ -783,7 +783,7 @@ func extractContent(doc *html.Node, cache *lru.Cache, opts Options) (*html.Node,
 
 	if len(dom.Children(resultBody)) == 0 || tmpTextLength < opts.Config.MinExtractedSize {
 		resultBody = dom.CreateElement("body")
-		recoverWildText(backupDoc, resultBody, potentialTags, cache, opts)
+		recoverWildText(doc, resultBody, potentialTags, cache, opts)
 		tmpText = trim(etree.IterText(resultBody, " "))
 	}
 
