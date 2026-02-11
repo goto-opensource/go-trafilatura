@@ -132,15 +132,11 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 		}
 	}
 
-	// Backup document to make sure the original kept untouched
-	doc = dom.Clone(doc, true)
+	// Keep a reference to the original as a backup for fallback extractors
+	docBackup := doc
 
-	// Create backup only if fallback or rescue might be needed
-	var docBackup *html.Node
-	needsBackup := (opts.EnableFallback && !opts.IncludeLinksOnly) || opts.Focus != FavorPrecision
-	if needsBackup {
-		docBackup = dom.Clone(doc, true)
-	}
+	// Clone working copy to make sure the original kept untouched
+	doc = dom.Clone(doc, true)
 
 	// Clean and convert HTML tags
 	docCleaning(doc, opts)

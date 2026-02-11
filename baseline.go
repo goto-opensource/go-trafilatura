@@ -28,6 +28,7 @@ func basicCleaning(doc *html.Node) *html.Node {
 }
 
 // baseline uses baseline extraction function targeting text paragraphs and/or JSON metadata.
+// Note: this does not affect the original document but operates on a deep clone.
 func baseline(doc *html.Node) (*html.Node, string) {
 	var tmpText string
 	postBody := etree.Element("body")
@@ -97,6 +98,9 @@ func baseline(doc *html.Node) (*html.Node, string) {
 	if utf8.RuneCountInString(tmpText) > 100 {
 		return postBody, tmpText
 	}
+
+	// Clone before tree cleaning to avoid mutating input
+	doc = dom.Clone(doc, true)
 
 	// Basic tree cleaning
 	doc = basicCleaning(doc)

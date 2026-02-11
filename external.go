@@ -47,6 +47,8 @@ var tagsToSanitize = sliceToMap(
 // implementation between them, here we do it a bit differently compared to the original code.
 //
 // In original Trafilatura, this function is named `compare_extraction`.
+//
+// Note: this does not affect the original document but operates on a deep clone.
 func compareExternalExtraction(originalDoc, extractedDoc *html.Node, opts Options) (*html.Node, string) {
 	// Bypass for favor recall
 	extractedText := trim(etree.IterText(extractedDoc, " "))
@@ -63,7 +65,7 @@ func compareExternalExtraction(originalDoc, extractedDoc *html.Node, opts Option
 	logInfo(opts, "trying external extractor for url %q", originalUrl)
 
 	// Prior cleaning
-	cleanedDoc := dom.Clone(originalDoc, true)
+	cleanedDoc := originalDoc
 	if opts.Focus == FavorPrecision {
 		cleanedDoc = pruneUnwantedNodes(cleanedDoc, selector.OverallDiscardedContent)
 	}
@@ -100,6 +102,7 @@ func compareExternalExtraction(originalDoc, extractedDoc *html.Node, opts Option
 	return extractedDoc, extractedText
 }
 
+// Note: this does not affect the original document but operates on a deep clone.
 func createFallbackGenerators(doc *html.Node, opts Options) []_FallbackGenerator {
 	// Initial variables
 	var generators []_FallbackGenerator
