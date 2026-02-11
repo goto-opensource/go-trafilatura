@@ -142,17 +142,17 @@ func pruneHTML(doc *html.Node, opts Options) {
 // pruneUnwantedNodes prune the HTML tree by removing unwanted sections.
 func pruneUnwantedNodes(tree *html.Node, queries []selector.Rule, withBackup ...bool) *html.Node {
 	var oldLen int
-	var backup *html.Node
 	backupEnabled := len(withBackup) > 0 && withBackup[0]
 
-	tree = dom.Clone(tree, true)
 	if backupEnabled {
-		backup = dom.Clone(tree, true)
 		oldLen = utf8.RuneCountInString(dom.TextContent(tree))
 	}
 
+	// Clone once for working resultTree
+	resultTree := dom.Clone(tree, true)
+
 	for _, query := range queries {
-		subElements := selector.QueryAll(tree, query)
+		subElements := selector.QueryAll(resultTree, query)
 		for i := len(subElements) - 1; i >= 0; i-- {
 			subElement := subElements[i]
 
@@ -180,13 +180,14 @@ func pruneUnwantedNodes(tree *html.Node, queries []selector.Rule, withBackup ...
 	}
 
 	if backupEnabled {
-		newLen := utf8.RuneCountInString(dom.TextContent(tree))
+		newLen := utf8.RuneCountInString(dom.TextContent(resultTree))
 		if newLen <= oldLen/7 {
-			return backup
+			// Return a clone of original tree if the resulting tree is too small
+			return dom.Clone(tree, true)
 		}
 	}
 
-	return tree
+	return resultTree
 }
 
 // handleTextNode converts, formats and probes potential text elements.

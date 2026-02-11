@@ -134,8 +134,13 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 
 	// Backup document to make sure the original kept untouched
 	doc = dom.Clone(doc, true)
-	docBackup1 := dom.Clone(doc, true)
-	docBackup2 := dom.Clone(doc, true)
+
+	// Create backup only if fallback or rescue might be needed
+	var docBackup *html.Node
+	needsBackup := (opts.EnableFallback && !opts.IncludeLinksOnly) || opts.Focus != FavorPrecision
+	if needsBackup {
+		docBackup = dom.Clone(doc, true)
+	}
 
 	// Clean and convert HTML tags
 	docCleaning(doc, opts)
@@ -158,13 +163,13 @@ func ExtractDocument(doc *html.Node, opts Options) (*ExtractResult, error) {
 
 	// Use fallback if necessary
 	if opts.EnableFallback && !opts.IncludeLinksOnly {
-		postBody, tmpBodyText = compareExternalExtraction(docBackup1, postBody, opts)
+		postBody, tmpBodyText = compareExternalExtraction(docBackup, postBody, opts)
 	}
 
 	// Rescue: try to use original/dirty tree -- only != FavorPrecision
 	lenText := utf8.RuneCountInString(tmpBodyText)
 	if lenText < opts.Config.MinExtractedSize && opts.Focus != FavorPrecision {
-		postBody, tmpBodyText = baseline(docBackup2)
+		postBody, tmpBodyText = baseline(docBackup)
 	}
 
 	// Include links
