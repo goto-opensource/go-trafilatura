@@ -140,6 +140,7 @@ func pruneHTML(doc *html.Node, opts Options) {
 }
 
 // pruneUnwantedNodes prune the HTML tree by removing unwanted sections.
+// Note: it does not touch the original tree but operates on a deep clone.
 func pruneUnwantedNodes(tree *html.Node, queries []selector.Rule, withBackup ...bool) *html.Node {
 	var oldLen int
 	backupEnabled := len(withBackup) > 0 && withBackup[0]
